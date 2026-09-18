@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Decision {
+  allow
+  flag
+  block
+}
+
+model Comment {
+  id             String   @id @default(uuid())
+  idempotencyKey String   @unique
+  text           String
+  userId         String?
+  createdAt      DateTime @default(now())
+
+  moderationResults CommentModerationResult[]
+
+  @@map("comments")
+}
+
+model CommentModerationResult {
+  id             String   @id @default(uuid())
+  commentId      String
+  comment        Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  decision       Decision
+  reason         String
+  suggestedReply String
+  provider       String
+  model          String
+  createdAt      DateTime @default(now())
+
+  @@index([commentId])
+  @@map("comment_moderation_results")
+}

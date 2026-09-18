@@ -307,7 +307,11 @@ Response (201/200):
 
 ### GET `/comments/:id`
 
-`id` must be UUID. Replay the same shape as POST.
+Three cases, each a separate test:
+
+1. Existing comment (valid UUID) → `200`, same shape as POST.
+2. Invalid id (not a UUID) → `400` `{ error: "invalid_input", ... }`.
+3. Unknown UUID → `404` `{ error: "not_found", ... }`.
 
 ### Error codes
 
@@ -363,7 +367,7 @@ Vitest + supertest. In-memory `CommentsRepository` behind the same interface. `c
 
 Required by brief:
 
-1. **Happy path** — POST allow → 201, fields present, GET by id returns the same body, provider called once.
+1. **Happy path POST** — POST allow → 201, fields present, provider called once.
 2. **Duplicate key** — second POST with same key **and** same content checksum → 200, same `id`/`text` as first, provider still called once. Same key, different checksum → 409 `idempotency_conflict`. Concurrent same-key+checksum creates share one in-flight `moderate` call.
 3. **Invalid input** — missing `text` / empty key → 400, provider not called.
 
@@ -371,12 +375,14 @@ Required by Ran / this plan:
 
 4. **Provider 503** — `moderate` rejects → 503 `moderation_unavailable`, no row for that key; retry with working provider → 201 (key was not consumed).
 5. **flag / block reason** — text containing `flag` / `block` → non-empty `reason`, `suggestedReply` `""`.
-6. GET invalid id → 400; unknown UUID → 404.
-7. Health → `{ status: "ok", db: "up" }` with noop check.
-8. Unit: mock provider allow/flag/block + aborted signal.
-9. Unit: `loadConfig` defaults, explicit values, rejects missing `DATABASE_URL` / bad `PORT`.
-10. CORS: `Access-Control-Allow-Origin` from `HttpLimits.corsOrigin`.
-11. Rate limit: `RATE_LIMIT_MAX=1` → second POST `/comments` is `429` `rate_limited`; `GET /health` still `200` (skipped).
+6. GET existing comment → 200, same body as POST.
+7. GET invalid id → 400 `invalid_input`.
+8. GET unknown UUID → 404 `not_found`.
+9. Health → `{ status: "ok", db: "up" }` with noop check.
+10. Unit: mock provider allow/flag/block + aborted signal.
+11. Unit: `loadConfig` defaults, explicit values, rejects missing `DATABASE_URL` / bad `PORT`.
+12. CORS: `Access-Control-Allow-Origin` from `HttpLimits.corsOrigin`.
+13. Rate limit: `RATE_LIMIT_MAX=1` → second POST `/comments` is `429` `rate_limited`; `GET /health` still `200` (skipped).
 
 In-memory repo must throw `UniqueConflictError` on duplicate key (mirrors Prisma `P2002`).
 

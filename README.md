@@ -3,7 +3,7 @@
 v1 backend for short community comments: accept, moderate with a replaceable AI provider, persist the result, fetch by id.
 
 **Candidate:** Oleksandr Shapovalov
-**Time spent:** 82 minutes (no public deploy)
+**Time spent:** 84 minutes (no public deploy)
 
 Default AI is a deterministic mock. No API key is required.
 
@@ -26,7 +26,7 @@ From the brief plus Ran Mizrahi’s answers (17 Sept 2026):
 - v1 calls the provider first and persists only if moderation succeeds. Provider failure → `503`, no row, idempotency key is **not** consumed.
 - A pending-then-update flow is out of scope (planned for v2).
 - Duplicate `idempotencyKey` with the same `{ text, userId }` checksum returns the original stored row (`200`) and does not call the provider again. Same key, different checksum → `409`.
-- Text is synthetic, max 2000 characters. No auth.
+- Text is synthetic, 1–2000 characters after trim. Whitespace-only `text` is `400`. No auth.
 
 
 
@@ -73,7 +73,7 @@ Middleware order in `createApp`: cors → rate-limit → json → routes → err
 
 **POST** `/comments`
 
-Body (Zod): `idempotencyKey` 1–128 chars, `text` 1–2000 chars, optional `userId` 1–128 chars. Invalid body or invalid JSON → `400` `{ error: "invalid_input", ... }`. Do not call the provider.
+Body (Zod): `idempotencyKey` 1–128 chars, `text` 1–2000 chars after trim (whitespace-only is invalid), optional `userId` 1–128 chars. Invalid body or invalid JSON → `400` `{ error: "invalid_input", ... }`. Do not call the provider.
 
 ```json
 {
@@ -226,7 +226,7 @@ Coverage of the brief + plan:
 - Happy path: POST allow → 201, fields present, provider called once
 - Duplicate key + same checksum → 200, provider still called once; same key, different checksum → `409`
 - Concurrent same-key+checksum creates share one in-flight `moderate` call
-- Invalid input → `400`, provider not called
+- Invalid input → `400`, provider not called (including whitespace-only `text`)
 - Provider `503` (`moderation_unavailable`): no row, key not consumed; retry → 201
 - `flag` / `block` → non-empty `reason`, `suggestedReply` `""`
 - GET existing comment → `200`, same body as POST
@@ -258,7 +258,8 @@ Postgres + unique index are exercised when you run the API via Compose.
 | Research + write `docs/implementation-plan.md`                                   | 30      |
 | Implement from the plan in several steps (code, tests, Compose) + targeted fixes | 27      |
 | Reviewer README last (after manual + tests + post-impl check)                    | 10      |
-| **Total**                                                                        | **82**  |
+| Last-minute: reject whitespace-only `text` (see Updated)                         | 2       |
+| **Total**                                                                        | **84**  |
 | Public HTTPS deploy                                                              | skipped |
 
 
@@ -285,8 +286,15 @@ The service was written with AI. Sequence: research the brief and write the plan
 | Targeted fixes | Cursor | Correct drift after reading the generated files, then check again | Same architecture | Anything that persisted on provider failure or omitted `reason`/`suggestedReply` | Small generation mistakes; plan + Ran’s answers are the contract |
 | Manual + tests | — | None — I ran the suite and the live slice myself | `npm test`; `docker compose up --build`; manual `POST` / `GET` / `/health` | Did not add a pending row or a real LLM | Confirm it matches the picture I already had before writing README |
 | Post-impl check + README | Cursor | Diff the brief, Ran’s answers, and the plan against the code; write the reviewer README last and keep it aligned with the plan | Persist-only-on-success, reason rules, unique-index race, mock keywords; reviewer-facing README (assumptions, API, run, trade-offs, minutes) | Pending-row suggestions; copying the full plan (file-by-file tables, domain types dump) | Pending is v2; README is for a reviewer, not a second implementation spec |
+| Last-minute whitespace check | Cursor | Reject `text` that is only spaces (`trim` then `min(1)`), add a test, mark this as Updated in the README | Schema + invalid-input test + this note | Did not start trimming `idempotencyKey` / `userId` or reopen the 90-minute scope | `min(1)` counts characters, not meaning — `"   "` was still a “valid” comment |
 
 
 **Parts written without AI:** the clarifying questions to Ran; product decisions from his reply (allow/flag/block field rules, persist-only-on-success, do not consume the key on 503); choosing Express (NestJS too big, Fastify unknown); skipping public deploy to stay under 90 minutes; the manual + test pass above.
 
 **How I verified AI output:** I already had a picture of the target design (provider interface, persist only after moderation, 503 does not consume the key, `reason`/`suggestedReply` always strings). I read the generated files against that picture and against `docs/implementation-plan.md` — not as a rubber stamp. After targeted fixes: `npm test`, `docker compose up --build`, and manual `POST` / `GET` / `/health`. Last, a second agent compared the brief, the plan, and the implementation, and I synced this README with the plan, because an agent sometimes catches a mismatch a tired human pass misses.
+
+## Updated
+
+Overslept. I was ready to submit — laptop open, “ship it” energy — and then it just got in my mind: oof, yeah, I think I forgot something. Decided to check. And yeah, I actually forgot.
+
+`text: z.string().min(1)` happily accepts `"   "`. Spaces are characters. An empty-looking comment is not an empty string. Two extra minutes: `trim()` first, then `min(1).max(2000)`, plus a test so whitespace-only `text` is `400` and never reaches the provider. Still 84 / 90. Now I can actually submit.

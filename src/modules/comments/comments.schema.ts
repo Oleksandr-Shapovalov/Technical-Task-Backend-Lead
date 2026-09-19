@@ -7,7 +7,7 @@ extendZodWithOpenApi(z)
 export const createCommentBodySchema = z
   .object({
     idempotencyKey: z.string().min(1).max(128).openapi({ example: 'cmt-001' }),
-    text: z.string().min(1).max(2000).openapi({ example: 'Nice post' }),
+    text: z.string().trim().min(1).max(2000).openapi({ example: 'Nice post' }),
     userId: z.string().min(1).max(128).optional().openapi({ example: 'user-42' }),
   })
   .openapi('CreateCommentBody')

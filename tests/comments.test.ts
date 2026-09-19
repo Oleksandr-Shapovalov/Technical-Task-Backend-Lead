@@ -104,6 +104,13 @@ describe('POST /comments', () => {
     })
     expect(emptyKey.status).toBe(HttpStatus.BadRequest)
 
+    const whitespaceOnlyText = await request(app).post('/comments').send({
+      idempotencyKey: 'bad-spaces',
+      text: '   ',
+    })
+    expect(whitespaceOnlyText.status).toBe(HttpStatus.BadRequest)
+    expect(whitespaceOnlyText.body.error).toBe(ErrorCode.InvalidInput)
+
     expect(moderateSpy).not.toHaveBeenCalled()
   })
 
